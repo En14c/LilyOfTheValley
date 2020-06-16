@@ -203,6 +203,7 @@ static void 	r00tkit_hide(void);
 static void	write_cr0_forced(unsigned long val);
 static void	protect_memory(void);
 static void	unprotect_memory(void);
+#endif
 
 /*
 #################
